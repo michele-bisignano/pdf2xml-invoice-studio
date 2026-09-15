@@ -14,7 +14,13 @@ import {
   Language,
 } from "../types";
 import { translations } from "../utils/i18n";
-import { ValidationSummary, FieldValidationState } from "../utils/validation";
+import {
+  ValidationSummary,
+  FieldValidationState,
+  normalizeCountryCode,
+  normalizeDateForXml,
+  normalizeAmountStr,
+} from "../utils/validation";
 
 interface InvoiceFormProps {
   language: Language;
@@ -70,18 +76,37 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   };
 
   // Helper for field status:
-  // Only shows "Dato non rilevato" in red if invalid/missing.
-  // Correct fields have NO badge and do NOT display "(RILEVATO)".
+  // Only shows "Dato non rilevato" or format guidance in red if invalid/missing.
+  // Correct fields have NO badge and do NOT display anything.
   const renderFieldStatus = (fieldState: FieldValidationState) => {
     if (fieldState.isError) {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
           <AlertCircle className="w-3 h-3 shrink-0" />
-          <span>{t.notDetectedText}</span>
+          <span>{fieldState.message || t.notDetectedText}</span>
         </span>
       );
     }
     return null;
+  };
+
+  // Helper for Enter key handling across inputs:
+  // Normalizes the field value, blurs the field so that the validation state applies immediately,
+  // and only triggers form generation if all fields are valid.
+  const handleInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    normalizeFn?: () => void
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (normalizeFn) {
+        normalizeFn();
+      }
+      (e.currentTarget as HTMLElement).blur();
+      if (validation.isValid) {
+        onGenerate();
+      }
+    }
   };
 
   return (
@@ -170,6 +195,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={customer.name}
               onChange={(e) => onCustomerChange("name", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("name", customer.name.trim()))}
+              onBlur={() => onCustomerChange("name", customer.name.trim())}
               placeholder={t.customerNamePlaceholder}
               className={getInputClasses(validation.fields.customerName)}
             />
@@ -192,6 +219,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={customer.vat}
               onChange={(e) => onCustomerChange("vat", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("vat", customer.vat.trim().replace(/\s+/g, "").toUpperCase()))}
+              onBlur={() => onCustomerChange("vat", customer.vat.trim().replace(/\s+/g, "").toUpperCase())}
               placeholder={t.customerVatPlaceholder}
               className={getInputClasses(validation.fields.customerVat, true)}
             />
@@ -213,6 +242,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={customer.fiscalCode || ""}
               onChange={(e) => onCustomerChange("fiscalCode", e.target.value.toUpperCase())}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("fiscalCode", (customer.fiscalCode || "").trim().replace(/\s+/g, "").toUpperCase()))}
+              onBlur={() => onCustomerChange("fiscalCode", (customer.fiscalCode || "").trim().replace(/\s+/g, "").toUpperCase())}
               placeholder={t.customerFiscalCodePlaceholder}
               className={getInputClasses(validation.fields.customerFiscalCode, true)}
             />
@@ -233,9 +264,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               id="cust_country"
               type="text"
               required
-              maxLength={2}
               value={customer.country}
               onChange={(e) => onCustomerChange("country", e.target.value.toUpperCase())}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("country", normalizeCountryCode(customer.country) || customer.country.trim().toUpperCase()))}
+              onBlur={() => onCustomerChange("country", normalizeCountryCode(customer.country) || customer.country.trim().toUpperCase())}
               placeholder={t.customerCountryPlaceholder}
               className={getInputClasses(validation.fields.customerCountry, true)}
             />
@@ -257,6 +289,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={customer.cap}
               onChange={(e) => onCustomerChange("cap", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("cap", customer.cap.trim()))}
+              onBlur={() => onCustomerChange("cap", customer.cap.trim())}
               placeholder={t.customerCapPlaceholder}
               className={getInputClasses(validation.fields.customerCap)}
             />
@@ -278,6 +312,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={customer.city}
               onChange={(e) => onCustomerChange("city", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("city", customer.city.trim()))}
+              onBlur={() => onCustomerChange("city", customer.city.trim())}
               placeholder={t.customerCityPlaceholder}
               className={getInputClasses(validation.fields.customerCity)}
             />
@@ -300,6 +336,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               maxLength={2}
               value={customer.province || ""}
               onChange={(e) => onCustomerChange("province", e.target.value.toUpperCase())}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("province", (customer.province || "").trim().toUpperCase()))}
+              onBlur={() => onCustomerChange("province", (customer.province || "").trim().toUpperCase())}
               placeholder={t.customerProvincePlaceholder}
               className={getInputClasses(validation.fields.customerProvince, true)}
             />
@@ -321,6 +359,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={customer.address}
               onChange={(e) => onCustomerChange("address", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onCustomerChange("address", customer.address.trim()))}
+              onBlur={() => onCustomerChange("address", customer.address.trim())}
               placeholder={t.customerAddressPlaceholder}
               className={getInputClasses(validation.fields.customerAddress)}
             />
@@ -357,6 +397,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={supplier.name}
               onChange={(e) => onSupplierChange("name", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("name", supplier.name.trim()))}
+              onBlur={() => onSupplierChange("name", supplier.name.trim())}
               placeholder={t.supplierNamePlaceholder}
               className={getInputClasses(validation.fields.supplierName)}
             />
@@ -379,6 +421,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={supplier.vat}
               onChange={(e) => onSupplierChange("vat", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("vat", supplier.vat.trim().replace(/\s+/g, "").toUpperCase()))}
+              onBlur={() => onSupplierChange("vat", supplier.vat.trim().replace(/\s+/g, "").toUpperCase())}
               placeholder={t.supplierVatPlaceholder}
               className={getInputClasses(validation.fields.supplierVat, true)}
             />
@@ -399,9 +443,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               id="supp_country"
               type="text"
               required
-              maxLength={2}
               value={supplier.country}
               onChange={(e) => onSupplierChange("country", e.target.value.toUpperCase())}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("country", normalizeCountryCode(supplier.country) || supplier.country.trim().toUpperCase()))}
+              onBlur={() => onSupplierChange("country", normalizeCountryCode(supplier.country) || supplier.country.trim().toUpperCase())}
               placeholder={t.supplierCountryPlaceholder}
               className={getInputClasses(validation.fields.supplierCountry, true)}
             />
@@ -423,6 +468,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={supplier.cap}
               onChange={(e) => onSupplierChange("cap", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("cap", supplier.cap.trim()))}
+              onBlur={() => onSupplierChange("cap", supplier.cap.trim())}
               placeholder={t.supplierCapPlaceholder}
               className={getInputClasses(validation.fields.supplierCap)}
             />
@@ -444,6 +491,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={supplier.city}
               onChange={(e) => onSupplierChange("city", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("city", supplier.city.trim()))}
+              onBlur={() => onSupplierChange("city", supplier.city.trim())}
               placeholder={t.supplierCityPlaceholder}
               className={getInputClasses(validation.fields.supplierCity)}
             />
@@ -465,6 +514,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               type="text"
               value={supplier.address}
               onChange={(e) => onSupplierChange("address", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onSupplierChange("address", supplier.address.trim()))}
+              onBlur={() => onSupplierChange("address", supplier.address.trim())}
               placeholder={t.supplierAddressPlaceholder}
               className={getInputClasses(validation.fields.supplierAddress)}
             />
@@ -501,6 +552,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={invoice.invoiceNumber}
               onChange={(e) => onInvoiceChange("invoiceNumber", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => onInvoiceChange("invoiceNumber", invoice.invoiceNumber.trim()))}
+              onBlur={() => onInvoiceChange("invoiceNumber", invoice.invoiceNumber.trim())}
               placeholder={t.invoiceNumPlaceholder}
               className={getInputClasses(validation.fields.invoiceNumber, true)}
             />
@@ -523,6 +576,14 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={invoice.invoiceDate}
               onChange={(e) => onInvoiceChange("invoiceDate", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => {
+                const norm = normalizeDateForXml(invoice.invoiceDate);
+                if (norm) onInvoiceChange("invoiceDate", norm);
+              })}
+              onBlur={() => {
+                const norm = normalizeDateForXml(invoice.invoiceDate);
+                if (norm) onInvoiceChange("invoiceDate", norm);
+              }}
               placeholder={t.invoiceDatePlaceholder}
               className={getInputClasses(validation.fields.invoiceDate, true)}
             />
@@ -545,6 +606,14 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               required
               value={invoice.amount}
               onChange={(e) => onInvoiceChange("amount", e.target.value)}
+              onKeyDown={(e) => handleInputKeyDown(e, () => {
+                const norm = normalizeAmountStr(invoice.amount);
+                if (norm) onInvoiceChange("amount", norm);
+              })}
+              onBlur={() => {
+                const norm = normalizeAmountStr(invoice.amount);
+                if (norm) onInvoiceChange("amount", norm);
+              }}
               placeholder={t.invoiceAmountPlaceholder}
               className={getInputClasses(validation.fields.invoiceAmount, true)}
             />
@@ -566,6 +635,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               rows={2}
               value={invoice.description}
               onChange={(e) => onInvoiceChange("description", e.target.value)}
+              onBlur={() => onInvoiceChange("description", invoice.description.trim())}
               placeholder={t.invoiceDescPlaceholder}
               className={getInputClasses(validation.fields.invoiceDescription)}
             />

@@ -1,4 +1,5 @@
 import { FullInvoiceState } from "../types";
+import { normalizeCountryCode, normalizeDateForXml } from "./validation";
 
 export function escapeXml(unsafe: string): string {
   if (!unsafe) return "";
@@ -12,7 +13,7 @@ export function escapeXml(unsafe: string): string {
 
 export function formatAmount(val: string | number): string {
   if (typeof val === "number") return isNaN(val) ? "0.00" : val.toFixed(2);
-  let clean = String(val || "").trim().replace(/\s/g, "");
+  let clean = String(val || "").trim().replace(/[€$£a-zA-Z\s]/g, "");
   if (clean.includes(".") && clean.includes(",")) {
     if (clean.lastIndexOf(",") > clean.lastIndexOf(".")) {
       clean = clean.replace(/\./g, "").replace(",", ".");
@@ -42,18 +43,20 @@ export function generateInvoiceXml(state: FullInvoiceState): string {
   const progressivo = now.toISOString().replace(/[-:T.Z]/g, "").slice(-5);
 
   // Clean country code and VAT (SDI allows alphanumeric only, max 28 chars)
-  const suppCountry = (supplier.country || "XX").trim().toUpperCase();
+  const suppCountry = normalizeCountryCode(supplier.country || "XX");
   let suppVat = (supplier.vat || "").trim().replace(/[\s.-]/g, "");
   if (suppVat.toUpperCase().startsWith(suppCountry) && suppCountry.length === 2) {
     suppVat = suppVat.substring(2);
   }
 
-  const custCountry = (customer.country || "IT").trim().toUpperCase();
+  const custCountry = normalizeCountryCode(customer.country || "IT");
   let custVat = (customer.vat || "").trim().replace(/[\s.-]/g, "");
   if (custVat.toUpperCase().startsWith(custCountry) && custCountry.length === 2) {
     custVat = custVat.substring(2);
   }
   const custFiscalCode = (customer.fiscalCode || "").trim().replace(/[\s.-]/g, "").toUpperCase();
+
+  const formattedInvoiceDate = normalizeDateForXml(invoice.invoiceDate);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <p:FatturaElettronica versione="FPR12" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -110,7 +113,7 @@ export function generateInvoiceXml(state: FullInvoiceState): string {
       <DatiGeneraliDocumento>
         <TipoDocumento>${escapeXml(invoice.documentType)}</TipoDocumento>
         <Divisa>${escapeXml(invoice.currency || "EUR")}</Divisa>
-        <Data>${escapeXml(invoice.invoiceDate)}</Data>
+        <Data>${escapeXml(formattedInvoiceDate)}</Data>
         <Numero>${escapeXml(invoice.invoiceNumber)}</Numero>
         <ImportoTotaleDocumento>${formattedAmount}</ImportoTotaleDocumento>
         <Causale>${escapeXml(invoice.description || "Inversione contabile - autofattura")}</Causale>

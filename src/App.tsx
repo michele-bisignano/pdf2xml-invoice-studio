@@ -158,8 +158,10 @@ export const App: React.FC = () => {
   // Form field handlers: when user modifies a field, mark it as user-provided
   const handleCustomerChange = (field: keyof CustomerData, val: string) => {
     setCustomer((prev) => ({ ...prev, [field]: val }));
+    const mappedKey = `customer${field.charAt(0).toUpperCase() + field.slice(1)}`;
     setUserEditedFields((prev) => {
       const next = new Set(prev);
+      next.add(mappedKey);
       next.add(field);
       return next;
     });
@@ -168,8 +170,10 @@ export const App: React.FC = () => {
 
   const handleSupplierChange = (field: keyof SupplierData, val: string) => {
     setSupplier((prev) => ({ ...prev, [field]: val }));
+    const mappedKey = `supplier${field.charAt(0).toUpperCase() + field.slice(1)}`;
     setUserEditedFields((prev) => {
       const next = new Set(prev);
+      next.add(mappedKey);
       next.add(field);
       return next;
     });
@@ -178,8 +182,16 @@ export const App: React.FC = () => {
 
   const handleInvoiceChange = (field: keyof InvoiceData, val: string) => {
     setInvoice((prev) => ({ ...prev, [field]: val }));
+    const invoiceKeyMap: Record<string, string> = {
+      invoiceNumber: "invoiceNumber",
+      invoiceDate: "invoiceDate",
+      amount: "invoiceAmount",
+      description: "invoiceDescription",
+    };
+    const mappedKey = invoiceKeyMap[field] || field;
     setUserEditedFields((prev) => {
       const next = new Set(prev);
+      next.add(mappedKey);
       next.add(field);
       return next;
     });
@@ -357,7 +369,11 @@ export const App: React.FC = () => {
   // Generate and save XML
   const handleGenerateXml = () => {
     if (!validation.isValid) {
-      setFormError(t.errRequiredFields);
+      const details =
+        validation.invalidFieldLabels && validation.invalidFieldLabels.length > 0
+          ? `${t.errRequiredFields}: ${validation.invalidFieldLabels.join(", ")}`
+          : t.errRequiredFields;
+      setFormError(details);
       return;
     }
 
