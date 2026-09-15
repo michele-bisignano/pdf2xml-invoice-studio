@@ -37,49 +37,49 @@ This tool provides a lightweight, strictly offline solution:
 
 ---
 
-## 📦 Creazione Eseguibile Windows (.exe Standalone)
+## 📦 Windows Executable Creation (Standalone .exe)
 
-Facendo doppio click su **`build_win.bat`** da Windows:
-1. Verifica la presenza di Node.js e npm.
-2. Esegue `npm install` per installare tutte le dipendenze.
-3. Compila l'applicazione con `npm run build`.
-4. Pacchettizza il server e il frontend in un singolo file eseguibile nativo per Windows x64: **`dist\GeneratoreXML.exe`**.
+By double-clicking on **`build_win.bat`** on Windows:
+1. Checks for Node.js and npm availability.
+2. Runs `npm install` to install all dependencies.
+3. Builds the application with `npm run build`.
+4. Packages the server and frontend into a single native Windows x64 executable: **`dist\GeneratoreXML.exe`**.
 
-Facendo doppio click su `dist\GeneratoreXML.exe`, l'app viene avviata e apre automaticamente il browser all'indirizzo `http://localhost:3000`.
+Double-clicking `dist\GeneratoreXML.exe` starts the app and automatically opens the browser at `http://localhost:3000`.
 
 ---
 
-## 🌐 Avvio in Sviluppo
+## 🌐 Development Start
 
 ```bash
 npm install
 npm run dev
 ```
-Apri `http://localhost:3000` nel browser.
+Open `http://localhost:3000` in your browser.
 
 ---
 
-## 📂 Struttura del Progetto
+## 📂 Project Structure
 
 ```text
-├── build_win.bat            # Script batch per creare GeneratoreXML.exe su Windows
-├── server.ts                # Server Express locale con routing SPA e auto-apertura browser
+├── build_win.bat            # Batch script to create GeneratoreXML.exe on Windows
+├── server.ts                # Local Express server with SPA routing and auto-browser launch
 ├── src/
-│   ├── App.tsx              # Componente principale dell'applicazione
-│   ├── types.ts             # Definizioni TypeScript e dati di default
+│   ├── App.tsx              # Main application component
+│   ├── types.ts             # TypeScript definitions and default data
 │   ├── components/
-│   │   ├── Header.tsx       # Barra superiore con logo, switch lingua e tema
-│   │   ├── PdfDropzone.tsx  # Area drag & drop PDF e immagini con OCR offline
-│   │   ├── InvoiceForm.tsx  # Form dati Committente, Fornitore e Fattura
-│   │   ├── XmlResult.tsx    # Anteprima XML con download e copia
-│   │   └── BuyerSettingsModal.tsx # Impostazioni profilo committente salvato
+│   │   ├── Header.tsx       # Top bar with logo, language and theme switcher
+│   │   ├── PdfDropzone.tsx  # PDF & image drag-and-drop area with offline OCR
+│   │   ├── InvoiceForm.tsx  # Customer, Supplier, and Invoice form
+│   │   ├── XmlResult.tsx    # XML preview with download and copy
+│   │   └── BuyerSettingsModal.tsx # Saved customer profile settings
 │   └── utils/
-│       ├── i18n.ts          # Traduzioni bilingue (Italiano/Inglese)
-│       ├── pdfExtractor.ts  # Parsing PDF nativo e motore OCR Tesseract client-side
-│       ├── validation.ts    # Validazione real-time dei campi obbligatori SDI
-│       └── xmlGenerator.ts  # Generazione tracciato XML FPR12 conforme ad Agenzia delle Entrate
-├── package.json             # Dipendenze e script di build
-└── README.md                # Documentazione del progetto
+│       ├── i18n.ts          # Bilingual translations (Italian/English)
+│       ├── pdfExtractor.ts  # Native PDF parsing and client-side Tesseract OCR engine
+│       ├── validation.ts    # Real-time validation of mandatory SDI fields
+│       └── xmlGenerator.ts  # XML FPR12 layout generation compliant with Agenzia delle Entrate
+├── package.json             # Dependencies and build scripts
+└── README.md                # Project documentation
 ```
 
 ---
