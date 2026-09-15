@@ -1,21 +1,19 @@
-# Operational Plan: Profis Foreign Invoice XML Generator (TD17)
+# SelfInvoice XML Studio - Implementation Plan
 
-This operational plan outlines the testable milestones for the offline XML generator tool.
+## Phase 1: Core Architecture & UI Foundation
+- Responsive single-window layout with bilingual support (Italian/English) and Dark Mode.
+- Modular components: Header, BuyerSettingsModal, PdfDropzone, InvoiceForm, XmlResult.
+- Persistent user settings (`localStorage`) for default buyer (company data, VAT, fiscal code, address).
 
----
+## Phase 2: Offline PDF Extraction & OCR Engine
+- **Digital PDFs**: Coordinate-based text extraction using `pdf.js` to preserve line breaks and block structure.
+- **Scanned PDFs / Images**: Client-side OCR using `tesseract.js` with Italian/English language trained data.
+- **Extraction Heuristics**: Regex-based parsing to extract supplier details, customer/buyer details (name, VAT, CF, address, city, CAP, province), invoice number, date, amount, description, and auto-detect document type (TD17, TD18, TD19).
 
-## Step 1: Data Model and Type Definitions
-- **Objective**: Define English TypeScript interfaces for supplier, customer, and invoice state.
-- **Verification**: Zero sensitive data, strictly anonymous defaults, TD17 standard schema compliance.
+## Phase 3: Real-Time SDI Validation & XML Generation
+- **Validation Engine**: Real-time validation checks for mandatory Agenzia delle Entrate fields (P.IVA, Codice Fiscale, CAP, amounts, VAT rates, <Natura> rules for zero VAT).
+- **XML Generator**: Strict compliance with tracciato `FPR12` (Fattura Elettronica) for foreign invoices (integrazioni / autofatture).
 
-## Step 2: Python Desktop GUI & Test Suite
-- **Objective**: Maintain `generatore_xml.py` (Tkinter GUI, 450x520px, 10 fields, `#16a34a` generate button) and `test_generator.py`.
-- **Verification**: Pass `python3 python_script/test_generator.py` with 100% assertions green.
-
-## Step 3: Local Server & Automated Launcher
-- **Objective**: Clean `server.ts` (offline Express + Vite integration) and `start_local.py` launcher with automatic browser opening and process cleanup.
-- **Verification**: Server responds on port 3000; graceful termination on SIGINT/Ctrl+C.
-
-## Step 4: Faithful Web Application UI
-- **Objective**: Single-window 450-460px container in `src/App.tsx`, matching Tkinter form layout with IT/EN toggle and Dark Mode.
-- **Verification**: Successful build via `npm run build` with zero type errors.
+## Phase 4: Standalone Deployment & Windows Executable (.exe)
+- Express backend (`server.ts`) with SPA fallback and auto-browser launcher on startup.
+- Windows batch build script (`build_win.bat`) for full dependency install, frontend/backend build, and native Windows x64 binary packaging (`GeneratoreXML.exe` via `@yao-pkg/pkg`).

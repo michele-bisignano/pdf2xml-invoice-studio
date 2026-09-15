@@ -6,6 +6,9 @@ import {
   DocumentType,
   Language,
   Theme,
+  EMPTY_CUSTOMER,
+  EMPTY_SUPPLIER,
+  EMPTY_INVOICE,
   DEFAULT_CUSTOMER,
   DEFAULT_SUPPLIER,
   DEFAULT_INVOICE,
@@ -45,7 +48,7 @@ export const App: React.FC = () => {
   // Uploaded input filename for preserving XML output naming
   const [currentFileName, setCurrentFileName] = useState<string>("");
 
-  // Customer (Cessionario/Committente) state
+  // Customer (Cessionario/Committente) state: load saved buyer from localStorage or start empty
   const [customer, setCustomer] = useState<CustomerData>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("profis_buyer_customer");
@@ -57,18 +60,36 @@ export const App: React.FC = () => {
         }
       }
     }
-    return { ...DEFAULT_CUSTOMER };
+    return { ...EMPTY_CUSTOMER };
   });
 
-  // Supplier state
-  const [supplier, setSupplier] = useState<SupplierData>({ ...DEFAULT_SUPPLIER });
+  // Supplier state: starts clean
+  const [supplier, setSupplier] = useState<SupplierData>({ ...EMPTY_SUPPLIER });
 
-  // Invoice state
-  const [invoice, setInvoice] = useState<InvoiceData>({ ...DEFAULT_INVOICE });
+  // Invoice state: starts clean
+  const [invoice, setInvoice] = useState<InvoiceData>({ ...EMPTY_INVOICE });
 
   // Document extraction status & metadata
   const [hasExtractedFile, setHasExtractedFile] = useState<boolean>(false);
+  const [hasExtractedCustomer, setHasExtractedCustomer] = useState<boolean>(false);
   const [extractedMeta, setExtractedMeta] = useState<ExtractionMetaMap | undefined>(undefined);
+
+  // Track fields that have been manually typed/edited or loaded from saved buyer by the user
+  const [userEditedFields, setUserEditedFields] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("profis_buyer_customer")) {
+      return new Set([
+        "customerName",
+        "customerVat",
+        "customerCountry",
+        "customerCap",
+        "customerCity",
+        "customerAddress",
+        "customerFiscalCode",
+        "customerProvince",
+      ]);
+    }
+    return new Set();
+  });
 
   // Real-time validation computation with negative-only highlighting
   const validation = validateAllFields(
@@ -77,7 +98,8 @@ export const App: React.FC = () => {
     invoice,
     hasExtractedFile,
     extractedMeta,
-    language
+    language,
+    userEditedFields
   );
 
   // UI modal and result states
@@ -99,6 +121,28 @@ export const App: React.FC = () => {
     localStorage.setItem("profis_theme", theme);
   }, [theme]);
 
+  // Heartbeat & auto-shutdown on page close for local standalone executable
+  useEffect(() => {
+    const pingHeartbeat = () => {
+      fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+    };
+
+    pingHeartbeat();
+    const interval = setInterval(pingHeartbeat, 5000);
+
+    const handlePageHide = () => {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/api/shutdown");
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, []);
+
   // Sync language with localStorage
   const handleLanguageChange = (newLang: Language) => {
     setLanguage(newLang);
@@ -111,19 +155,34 @@ export const App: React.FC = () => {
     localStorage.setItem("profis_buyer_customer", JSON.stringify(newCustomer));
   };
 
-  // Form field handlers
+  // Form field handlers: when user modifies a field, mark it as user-provided
   const handleCustomerChange = (field: keyof CustomerData, val: string) => {
     setCustomer((prev) => ({ ...prev, [field]: val }));
+    setUserEditedFields((prev) => {
+      const next = new Set(prev);
+      next.add(field);
+      return next;
+    });
     setFormError(null);
   };
 
   const handleSupplierChange = (field: keyof SupplierData, val: string) => {
     setSupplier((prev) => ({ ...prev, [field]: val }));
+    setUserEditedFields((prev) => {
+      const next = new Set(prev);
+      next.add(field);
+      return next;
+    });
     setFormError(null);
   };
 
   const handleInvoiceChange = (field: keyof InvoiceData, val: string) => {
     setInvoice((prev) => ({ ...prev, [field]: val }));
+    setUserEditedFields((prev) => {
+      const next = new Set(prev);
+      next.add(field);
+      return next;
+    });
     setFormError(null);
   };
 
@@ -141,6 +200,7 @@ export const App: React.FC = () => {
     setHasExtractedFile(true);
     setExtractedMeta(extracted.extractedFields);
     setCurrentFileName(fileName);
+    setUserEditedFields(new Set()); // Reset user edits for newly extracted invoice
 
     // Auto-fill supplier fields
     setSupplier({
@@ -152,23 +212,58 @@ export const App: React.FC = () => {
       address: extracted.supplierAddress || "",
     });
 
-    // Auto-fill customer fields if extracted, otherwise retain existing
-    if (
+    // Auto-fill customer fields
+    const hasAnyCustomerField = Boolean(
       extracted.customerName ||
       extracted.customerVat ||
       extracted.customerFiscalCode ||
+      extracted.customerCountry ||
+      extracted.customerCap ||
+      extracted.customerCity ||
+      extracted.customerProvince ||
       extracted.customerAddress
-    ) {
-      setCustomer((prev) => ({
-        ...prev,
-        name: extracted.customerName || prev.name,
-        vat: extracted.customerVat || prev.vat,
-        fiscalCode: extracted.customerFiscalCode || prev.fiscalCode || "",
-        country: extracted.customerCountry || prev.country || "IT",
-        cap: extracted.customerCap || prev.cap || "",
-        city: extracted.customerCity || prev.city || "",
-        address: extracted.customerAddress || prev.address || "",
-      }));
+    );
+
+    if (hasAnyCustomerField) {
+      setHasExtractedCustomer(true);
+      setCustomer({
+        name: extracted.customerName || "",
+        vat: extracted.customerVat || "",
+        fiscalCode: extracted.customerFiscalCode || "",
+        country: extracted.customerCountry || (extracted.customerName ? "IT" : ""),
+        cap: extracted.customerCap || "",
+        city: extracted.customerCity || "",
+        province: extracted.customerProvince || "",
+        address: extracted.customerAddress || "",
+      });
+    } else {
+      setHasExtractedCustomer(false);
+      // Check if user has a configured saved buyer profile
+      let savedBuyer: CustomerData | null = null;
+      try {
+        const saved = localStorage.getItem("profis_buyer_customer");
+        if (saved) savedBuyer = JSON.parse(saved);
+      } catch {
+        // ignore
+      }
+
+      if (savedBuyer && savedBuyer.name) {
+        setCustomer(savedBuyer);
+        const buyerKeys = [
+          "customerName",
+          "customerVat",
+          "customerCountry",
+          "customerCap",
+          "customerCity",
+          "customerAddress",
+          "customerFiscalCode",
+          "customerProvince",
+        ];
+        setUserEditedFields(new Set(buyerKeys));
+      } else {
+        // Clear customer so unread fields are empty and highlighted in red
+        setCustomer({ ...EMPTY_CUSTOMER });
+      }
     }
 
     // Auto-detect document type
@@ -191,38 +286,57 @@ export const App: React.FC = () => {
   // Reset to original sample data
   const handleLoadSample = () => {
     setHasExtractedFile(false);
+    setHasExtractedCustomer(false);
     setExtractedMeta(undefined);
+    setUserEditedFields(new Set());
     setCurrentFileName("");
     setSupplier({ ...DEFAULT_SUPPLIER });
     setCustomer({ ...DEFAULT_CUSTOMER });
     setInvoice({ ...DEFAULT_INVOICE });
+    setGeneratedXml(null);
     setFormError(null);
+  };
+
+  // Reset customer specifically to saved buyer profile from localStorage
+  const handleResetCustomerToSaved = () => {
+    try {
+      const saved = localStorage.getItem("profis_buyer_customer");
+      if (saved) {
+        setCustomer(JSON.parse(saved));
+      } else {
+        setCustomer({ ...DEFAULT_CUSTOMER });
+      }
+    } catch {
+      setCustomer({ ...DEFAULT_CUSTOMER });
+    }
+    const buyerKeys = [
+      "customerName",
+      "customerVat",
+      "customerCountry",
+      "customerCap",
+      "customerCity",
+      "customerAddress",
+      "customerFiscalCode",
+      "customerProvince",
+    ];
+    setUserEditedFields((prev) => {
+      const next = new Set(prev);
+      buyerKeys.forEach((k) => next.add(k));
+      return next;
+    });
+    setHasExtractedCustomer(false);
   };
 
   // Clear all form inputs
   const handleClear = () => {
     setHasExtractedFile(false);
+    setHasExtractedCustomer(false);
     setExtractedMeta(undefined);
+    setUserEditedFields(new Set());
     setCurrentFileName("");
-    setSupplier({
-      name: "",
-      vat: "",
-      country: "",
-      cap: "",
-      city: "",
-      address: "",
-    });
-    setInvoice({
-      documentType: "TD17",
-      invoiceNumber: "",
-      invoiceDate: "",
-      amount: "",
-      currency: "EUR",
-      description: "",
-      vatRate: "0.00",
-      vatNature: "N6.1",
-      normativeReference: "Inversione contabile",
-    });
+    setSupplier({ ...EMPTY_SUPPLIER });
+    setCustomer({ ...EMPTY_CUSTOMER });
+    setInvoice({ ...EMPTY_INVOICE });
     setGeneratedXml(null);
     setFormError(null);
   };
@@ -285,6 +399,8 @@ export const App: React.FC = () => {
             language={language}
             customer={customer}
             onCustomerChange={handleCustomerChange}
+            onResetCustomer={handleResetCustomerToSaved}
+            hasExtractedCustomer={hasExtractedCustomer}
             supplier={supplier}
             onSupplierChange={handleSupplierChange}
             invoice={invoice}

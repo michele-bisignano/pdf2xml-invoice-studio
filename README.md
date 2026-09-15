@@ -37,74 +37,49 @@ This tool provides a lightweight, strictly offline solution:
 
 ---
 
-## 📦 Building the Standalone Windows Executable (.exe)
+## 📦 Creazione Eseguibile Windows (.exe Standalone)
 
-### Method 1: Using the Batch Script (Windows)
-1. Navigate to the `python_script/` folder.
-2. Double-click `build_exe.bat`.
-3. The standalone binary `GeneratoreXML_Profis.exe` will be generated in `python_script/dist/`.
+Facendo doppio click su **`build_win.bat`** da Windows:
+1. Verifica la presenza di Node.js e npm.
+2. Esegue `npm install` per installare tutte le dipendenze.
+3. Compila l'applicazione con `npm run build`.
+4. Pacchettizza il server e il frontend in un singolo file eseguibile nativo per Windows x64: **`dist\GeneratoreXML.exe`**.
 
-### Method 2: Manual Command Line
-```bash
-cd python_script
-pip install -r requirements.txt
-pyinstaller --noconsole --onefile --name "GeneratoreXML_Profis" generatore_xml.py
-```
+Facendo doppio click su `dist\GeneratoreXML.exe`, l'app viene avviata e apre automaticamente il browser all'indirizzo `http://localhost:3000`.
 
 ---
 
-## 💻 Running the Python Script Directly
+## 🌐 Avvio in Sviluppo
 
-```bash
-python3 python_script/generatore_xml.py
-```
-
----
-
-## 🧪 Running Unit Tests
-
-```bash
-python3 python_script/test_generator.py
-```
-
----
-
-## 🌐 Running the Local Web App
-
-### Quick Start with Auto-Browser Launcher:
-```bash
-python3 start_local.py
-```
-
-### Manual Start:
 ```bash
 npm install
 npm run dev
 ```
-Then open `http://localhost:3000` in your web browser.
+Apri `http://localhost:3000` nel browser.
 
 ---
 
-## 📂 Project Structure
+## 📂 Struttura del Progetto
 
 ```text
-├── start_local.py           # Python script to launch local web server and open browser
-├── python_script/
-│   ├── generatore_xml.py    # Desktop Tkinter GUI application
-│   ├── test_generator.py    # Python unit tests for XML generation
-│   ├── requirements.txt     # Python dependencies (pyinstaller)
-│   └── build_exe.bat        # Windows batch build script for PyInstaller
+├── build_win.bat            # Script batch per creare GeneratoreXML.exe su Windows
+├── server.ts                # Server Express locale con routing SPA e auto-apertura browser
 ├── src/
-│   ├── App.tsx              # Single-window web UI faithful to Tkinter (bilingual IT/EN, Dark Mode)
-│   ├── types.ts             # TypeScript interfaces and default anonymous test data
-│   ├── utils/
-│   │   └── xmlGenerator.ts  # XML generation and XML character escaping
-│   ├── index.css            # Tailwind CSS styles
-│   └── main.tsx             # Application entry point
-├── docs/                    # Project specifications and architecture
-├── server.ts                # Local Express server serving Vite app
-├── package.json             # NPM package scripts and dependencies
-└── README.md                # Project documentation
+│   ├── App.tsx              # Componente principale dell'applicazione
+│   ├── types.ts             # Definizioni TypeScript e dati di default
+│   ├── components/
+│   │   ├── Header.tsx       # Barra superiore con logo, switch lingua e tema
+│   │   ├── PdfDropzone.tsx  # Area drag & drop PDF e immagini con OCR offline
+│   │   ├── InvoiceForm.tsx  # Form dati Committente, Fornitore e Fattura
+│   │   ├── XmlResult.tsx    # Anteprima XML con download e copia
+│   │   └── BuyerSettingsModal.tsx # Impostazioni profilo committente salvato
+│   └── utils/
+│       ├── i18n.ts          # Traduzioni bilingue (Italiano/Inglese)
+│       ├── pdfExtractor.ts  # Parsing PDF nativo e motore OCR Tesseract client-side
+│       ├── validation.ts    # Validazione real-time dei campi obbligatori SDI
+│       └── xmlGenerator.ts  # Generazione tracciato XML FPR12 conforme ad Agenzia delle Entrate
+├── package.json             # Dipendenze e script di build
+└── README.md                # Documentazione del progetto
 ```
 
 ---

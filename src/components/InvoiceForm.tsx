@@ -20,6 +20,8 @@ interface InvoiceFormProps {
   language: Language;
   customer: CustomerData;
   onCustomerChange: (field: keyof CustomerData, value: string) => void;
+  onResetCustomer?: () => void;
+  hasExtractedCustomer?: boolean;
   supplier: SupplierData;
   onSupplierChange: (field: keyof SupplierData, value: string) => void;
   invoice: InvoiceData;
@@ -37,6 +39,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   language,
   customer,
   onCustomerChange,
+  onResetCustomer,
+  hasExtractedCustomer,
   supplier,
   onSupplierChange,
   invoice,
@@ -120,18 +124,37 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
       {/* SECTION 1: DATI COMMITTENTE (Cessionario/Committente) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-xs">
-        <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-          <h2 className="text-sm font-bold tracking-wide text-slate-900 dark:text-slate-100 uppercase">
-            {t.customerSectionTitle}
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-            {t.customerSectionSub}
-          </p>
+        <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold tracking-wide text-slate-900 dark:text-slate-100 uppercase">
+              {t.customerSectionTitle}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              {t.customerSectionSub}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasExtractedCustomer && (
+              <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                {language === "IT" ? "Dati estratti dal file" : "Extracted from file"}
+              </span>
+            )}
+            {onResetCustomer && (
+              <button
+                type="button"
+                onClick={onResetCustomer}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                title={language === "IT" ? "Ricarica i dati committente predefiniti salvati" : "Reload default saved buyer details"}
+              >
+                {language === "IT" ? "Ricarica committente salvato" : "Reload saved buyer"}
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Ragione Sociale Committente */}
-          <div className="sm:col-span-2 space-y-1.5">
+          <div className="sm:col-span-2 lg:col-span-4 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="cust_name"
@@ -153,7 +176,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           </div>
 
           {/* Partita IVA Committente */}
-          <div className="space-y-1.5">
+          <div className="sm:col-span-1 lg:col-span-2 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="cust_vat"
@@ -175,7 +198,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           </div>
 
           {/* Codice Fiscale Committente */}
-          <div className="space-y-1.5">
+          <div className="sm:col-span-1 lg:col-span-2 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="cust_fiscal_code"
@@ -260,8 +283,30 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             />
           </div>
 
-          {/* Indirizzo Committente */}
+          {/* Provincia Committente */}
           <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="cust_province"
+                className="block text-xs font-semibold text-slate-800 dark:text-slate-200"
+              >
+                {t.customerProvinceLabel}
+              </label>
+              {renderFieldStatus(validation.fields.customerProvince)}
+            </div>
+            <input
+              id="cust_province"
+              type="text"
+              maxLength={2}
+              value={customer.province || ""}
+              onChange={(e) => onCustomerChange("province", e.target.value.toUpperCase())}
+              placeholder={t.customerProvincePlaceholder}
+              className={getInputClasses(validation.fields.customerProvince, true)}
+            />
+          </div>
+
+          {/* Indirizzo Committente */}
+          <div className="sm:col-span-2 lg:col-span-4 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="cust_address"

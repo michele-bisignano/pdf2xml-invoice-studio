@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Building2, Save, RotateCcw } from "lucide-react";
 import { CustomerData, Language, DEFAULT_CUSTOMER } from "../types";
 import { translations } from "../utils/i18n";
@@ -20,6 +20,12 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
 }) => {
   const t = translations[language];
   const [formData, setFormData] = useState<CustomerData>({ ...customer });
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({ ...customer });
+    }
+  }, [isOpen, customer]);
 
   if (!isOpen) return null;
 

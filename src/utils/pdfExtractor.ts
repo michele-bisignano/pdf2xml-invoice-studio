@@ -1,10 +1,28 @@
+// Ensure Promise.withResolvers polyfill is present before pdfjs-dist usage
+if (typeof (Promise as any).withResolvers === "undefined") {
+  (Promise as any).withResolvers = function <T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: any) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 import * as pdfjsLib from "pdfjs-dist";
 import { createWorker } from "tesseract.js";
 import { ExtractedPdfData } from "../types";
 
 // Configure PDF.js worker to point to the statically hosted worker in /public
 if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  try {
+    const origin = window.location.origin || "";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = origin ? `${origin}/pdf.worker.min.mjs` : "/pdf.worker.min.mjs";
+  } catch {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  }
 }
 
 export type ProgressCallback = (status: string, percent: number) => void;
@@ -154,7 +172,7 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
   // -------------------------------------------------------------
   // 1. Identify Customer (Buyer) Section vs Supplier Section
   // -------------------------------------------------------------
-  const customerSectionRegex = /(?:(?:Bill|Invoice|Sold|Ship|Deliver)\s*to|Customer|Client|Client[e]?|Spett\.?(?:le)?|Destinatario|Fatturato\s*a|Cessionario\s*(?:\/?\s*Committente)?|Committente)[^\w\n]{0,6}\n?((?:[^\n]+\n?){1,8})/i;
+  const customerSectionRegex = /(?:(?:Bill|Invoice|Sold|Ship|Deliver|Billed|Invoiced)\s*(?:to)?|Customer(?:\s*Details)?|Client[e]?|Buyer|Purchaser|Spett\.?(?:le|abile)?|Destinatario|Fatturato\s*a|Intestato\s*a|Cessionario\s*(?:\/?\s*Committente)?|Committente|Dati\s*del\s*Committente)[^\w\n]{0,8}\n?((?:[^\n]+\n?){1,10})/i;
   const customerMatch = text.match(customerSectionRegex);
   const customerBlock = customerMatch ? customerMatch[1] : "";
 
@@ -173,7 +191,7 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
 
   // Check customer block first for customer VAT
   if (customerBlock) {
-    const custVatInBlock = customerBlock.match(/(?:VAT|P\.?\s*IVA|Partita\s*IVA|Tax\s*ID)[^\w\n]{0,6}(?:(IT))?[\s.-]*([0-9]{11})/i);
+    const custVatInBlock = customerBlock.match(/(?:VAT|P\.?\s*IVA|Partita\s*IVA|Tax\s*ID)[^\w\n]{0,6}(?:(IT))?[\s.-]*([0-9]{11})\b/i);
     if (custVatInBlock) {
       customerVatCandidate = custVatInBlock[2];
       customerCountryCandidate = "IT";
@@ -186,10 +204,24 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
       }
     }
 
-    // Italian Codice Fiscale (16 chars) in customer block
-    const cfMatch = customerBlock.match(/\b([A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])\b/i);
-    if (cfMatch) {
-      result.customerFiscalCode = cfMatch[1].toUpperCase();
+    // Italian Codice Fiscale: 16 alphanumeric characters (for individuals) OR 11 digits (for companies)
+    const cf16Match = customerBlock.match(/\b([A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])\b/i);
+    const cf11Match = customerBlock.match(/(?:Cod\.?\s*Fisc(?:ale)?|C\.?\s*F\.?)[^\w\n]{0,6}([0-9]{11})\b/i);
+    if (cf16Match) {
+      result.customerFiscalCode = cf16Match[1].toUpperCase();
+    } else if (cf11Match) {
+      result.customerFiscalCode = cf11Match[1];
+    }
+  }
+
+  // If customer Fiscal Code not found yet, check full text for labeled CF
+  if (!result.customerFiscalCode) {
+    const cfLabeled16 = text.match(/(?:Cod\.?\s*Fisc(?:ale)?|C\.?\s*F\.?)[^\w\n]{0,6}([A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])\b/i);
+    const cfLabeled11 = text.match(/(?:Cod\.?\s*Fisc(?:ale)?|C\.?\s*F\.?)[^\w\n]{0,6}([0-9]{11})\b/i);
+    if (cfLabeled16) {
+      result.customerFiscalCode = cfLabeled16[1].toUpperCase();
+    } else if (cfLabeled11) {
+      result.customerFiscalCode = cfLabeled11[1];
     }
   }
 
@@ -257,7 +289,7 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
       // Find customer company name (first line not matching label or vat)
       if (
         !result.customerName &&
-        !/(bill\s*to|invoice\s*to|spett|destinatario|p\.?\s*iva|vat|c\.?f\.?|tel|email)/i.test(line) &&
+        !/(bill\s*to|invoice\s*to|sold\s*to|spett|destinatario|p\.?\s*iva|vat|tax\s*id|c\.?f\.?|tel|email|buyer|client|customer)/i.test(line) &&
         line.length >= 3 &&
         line.length <= 80
       ) {
@@ -272,17 +304,28 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
         }
       }
 
-      // Customer City
+      // Customer City & optional Province (e.g. 00100 Roma (RM))
       if (!result.customerCity) {
-        const cityMatch = line.match(/\b\d{5}\s+([A-Za-z\s-]{2,30})/);
+        const cityMatch = line.match(/\b\d{5}\s+([A-Za-zÀ-ÖØ-öø-ÿ\s-]{2,30})(?:\s*\(([A-Za-z]{2})\))?/);
         if (cityMatch) {
           result.customerCity = cityMatch[1].trim();
+          if (cityMatch[2] && !result.customerProvince) {
+            result.customerProvince = cityMatch[2].toUpperCase();
+          }
+        }
+      }
+
+      // Customer Province standalone
+      if (!result.customerProvince) {
+        const provMatch = line.match(/(?:\(([A-Za-z]{2})\)|\b(?:Prov\.?|Provincia)\s*([A-Za-z]{2})\b)/i);
+        if (provMatch) {
+          result.customerProvince = (provMatch[1] || provMatch[2]).toUpperCase();
         }
       }
 
       // Customer Address
       if (!result.customerAddress) {
-        const addrMatch = line.match(/(?:via|viale|corso|piazza|strada|loc\.?|localit[àa]|largo|vicolo)\s+[A-Za-z0-9\s.,'°/-]+/i);
+        const addrMatch = line.match(/(?:via|viale|corso|piazza|strada|loc\.?|localit[àa]|largo|vicolo|stradone|contrada|address|indirizzo|street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|lane|way|rue|calle)\s+[A-Za-z0-9\s.,'°/-]+/i);
         if (addrMatch) {
           result.customerAddress = addrMatch[0].trim();
         }
@@ -302,9 +345,9 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.length > 2);
-    for (const line of lines.slice(0, 6)) {
+    for (const line of lines.slice(0, 8)) {
       if (
-        !/(invoice|fattura|rechnung|date|data|page|pagina|original|duplicate|tax|vat|p\.iva|bill\s*to)/i.test(line) &&
+        !/(invoice|fattura|rechnung|date|data|page|pagina|original|duplicate|tax|vat|p\.iva|bill\s*to|sold\s*to|receipt|total)/i.test(line) &&
         line.length >= 3 &&
         line.length <= 60
       ) {
@@ -314,28 +357,58 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
     }
   }
 
-  // Supplier CAP
-  const capMatch = text.match(/\b(\d{5})\b/);
-  if (capMatch && capMatch[1] !== result.customerCap) {
-    result.supplierCap = capMatch[1];
-  }
-
-  // Supplier City
-  const cityMatch = text.match(/(?:City|Comune|Citt[àa]|Ort|Ville)[^\w\n]{0,5}([A-Za-z\s-]{3,30})/i);
-  if (cityMatch) {
-    result.supplierCity = cityMatch[1].trim();
-  }
-
-  // Supplier Address
-  const suppAddrMatch = text.match(/(?:Address|Indirizzo|Sede|Adresse)[^\w\n]{0,5}([A-Za-z0-9\s.,'°/-]{5,60})/i);
+  // Supplier Address: Check labeled address first
+  const suppAddrMatch = text.match(/(?:Address|Indirizzo|Sede\s*(?:Legale|Operativa)?|Adresse|Registered\s*Office)[^\w\n]{0,5}[:\s]*\n?([A-Za-z0-9\s.,'°/-]{5,60})/i);
   if (suppAddrMatch) {
-    result.supplierAddress = suppAddrMatch[1].trim().split("\n")[0];
+    const rawAddr = suppAddrMatch[1].trim().split("\n")[0];
+    if (!rawAddr.toLowerCase().includes(result.customerAddress?.toLowerCase() || "_____")) {
+      result.supplierAddress = rawAddr;
+    }
+  }
+
+  // Fallback: look for typical street patterns in text (excluding customer address)
+  if (!result.supplierAddress) {
+    const allStreetMatches = Array.from(
+      text.matchAll(/(?:via|viale|corso|piazza|strada|loc\.?|localit[àa]|largo|vicolo|stradone|contrada|street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|lane|ln\.?|way|platz|strasse|straße|str\.?|rue|calle|cours|allee|allée|chemin)\s+[A-Za-z0-9\s.,'°/-]{4,45}/gi)
+    );
+    for (const sm of allStreetMatches) {
+      const candidate = sm[0].trim().split("\n")[0];
+      if (!result.customerAddress || !candidate.toLowerCase().includes(result.customerAddress.toLowerCase())) {
+        result.supplierAddress = candidate;
+        break;
+      }
+    }
+  }
+
+  // Supplier CAP & City
+  const cityLabelMatch = text.match(/(?:City|Comune|Citt[àa]|Ort|Ville)[^\w\n]{0,5}[:\s]*([A-Za-z\s-]{3,30})/i);
+  if (cityLabelMatch) {
+    result.supplierCity = cityLabelMatch[1].trim();
+  }
+
+  // Look for Postal code + City pattern (e.g., 83104 Bratislava or 10115 Berlin or 75001 Paris)
+  const capCityMatch = text.match(/\b(\d{4,5})\s+([A-Za-zÀ-ÖØ-öø-ÿ\s-]{2,30})\b/);
+  if (capCityMatch) {
+    const capFound = capCityMatch[1];
+    const cityFound = capCityMatch[2].trim().split("\n")[0];
+    if (capFound !== result.customerCap) {
+      if (!result.supplierCap) result.supplierCap = capFound;
+      if (!result.supplierCity) result.supplierCity = cityFound;
+    }
+  }
+
+  // Standalone supplier CAP if not yet found
+  if (!result.supplierCap) {
+    const capMatch = text.match(/\b(\d{4,5})\b/);
+    if (capMatch && capMatch[1] !== result.customerCap) {
+      result.supplierCap = capMatch[1];
+    }
   }
 
   // -------------------------------------------------------------
   // 5. Invoice Date
   // -------------------------------------------------------------
-  const dateLabelRegex = /(?:Invoice\s*Date|Date\s*of\s*issue|Fattura\s*del|Data\s*fattura|Data\s*emissione|Data\s*documento|Rechnungsdatum|Date\s*d['’]émission|Datum\s*vystavenia|Date)[^\d\n]{0,8}(\d{1,4}[-/.][A-Za-z0-9]{1,12}[-/.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,12}\s+\d{4})/i;
+  const dateLabelRegex = /(?:Invoice\s*Date|Date\s*of\s*issue|Fattura\s*del|Data\s*fattura|Data\s*emissione|Data\s*documento|Rechnungsdatum|Date\s*d['’]émission|Datum\s*vystavenia|Date\s*d['’]achat|Purchase\s*Date|Order\s*Date|Date)[^\d\n]{0,8}[:\s]*(\d{1,4}[-/.][A-Za-z0-9]{1,12}[-/.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,12}\s+\d{4})/i;
   const dateMatch = text.match(dateLabelRegex);
   if (dateMatch) {
     const parsed = normalizeDate(dateMatch[1]);
@@ -353,11 +426,11 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
   // -------------------------------------------------------------
   // 6. Invoice Number
   // -------------------------------------------------------------
-  const invNumLabelRegex = /(?:Invoice\s*(?:Number|No|#|Num)?|Fattura\s*(?:N(?:umero|\.|°)?)|Rechnung\s*(?:Nr\.?)|Facture\s*(?:N(?:umero|\.|°)?)|Fakt[uú]ra\s*(?:č\.?)|Doc(?:ument)?\s*(?:No|#)|Documento\s*N\.?)[^\w\n]{0,6}([A-Za-z0-9\-_/]{2,28})/i;
+  const invNumLabelRegex = /(?:Invoice\s*(?:Number|No\.?|#|Num\.?|ID)?|Inv\s*(?:#|No\.?|Num\.?)|Fattura\s*(?:N(?:umero|\.|°)?)|Fatt\.?\s*(?:N(?:umero|\.|°)?)|Rechnung\s*(?:Nr\.?)|Facture\s*(?:N(?:umero|\.|°)?)|Fakt[uú]ra\s*(?:č\.?)|Doc(?:ument)?\s*(?:No|#)|Documento\s*N\.?)[^\w\n]{0,6}[:\s]*([A-Za-z0-9\-_/]{2,28})/i;
   const invNumMatch = text.match(invNumLabelRegex);
   if (invNumMatch) {
     const rawNum = invNumMatch[1].trim();
-    if (!["date", "data", "total", "totale", "amount", "euro", "eur", "page"].includes(rawNum.toLowerCase())) {
+    if (!["date", "data", "total", "totale", "amount", "euro", "eur", "page", "tax", "vat"].includes(rawNum.toLowerCase())) {
       result.invoiceNumber = rawNum;
     }
   }
@@ -365,7 +438,7 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
   // -------------------------------------------------------------
   // 7. Invoice Amount
   // -------------------------------------------------------------
-  const amountLabelRegex = /(?:Total\s*(?:Due|Amount|Gross|Payable)?|Totale\s*(?:Fattura|Documento|Lordo|da\s*pagare|Imponibile)?|Net\s*Amount|Subtotal|Gesamtbetrag|Montant\s*Total|Celkov[aá]\s*suma|Grand\s*Total|Taxable\s*Amount|Imponibile)[^\d\n]{0,8}(?:EUR|€)?\s*([\d.,]{2,12})\s*(?:EUR|€)?/i;
+  const amountLabelRegex = /(?:Total\s*(?:Due|Amount|Gross|Payable)?|Totale\s*(?:Fattura|Documento|Lordo|da\s*pagare|Imponibile|a\s*pagare)?|Amount\s*Due|Total\s*to\s*pay|Balance\s*Due|Net\s*Amount|Subtotal|Gesamtbetrag|Montant\s*Total|Celkov[aá]\s*suma|Grand\s*Total|Taxable\s*Amount|Imponibile)[^\d\n]{0,8}[:\s]*(?:EUR|€|\$|GBP|USD)?\s*([\d.,]{2,12})\s*(?:EUR|€|\$|GBP|USD)?/i;
   const amountMatch = text.match(amountLabelRegex);
   if (amountMatch) {
     const parsedAmount = normalizeAmount(amountMatch[1]);
@@ -418,6 +491,7 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
     customerCountry: { wasExtracted: !!result.customerCountry, rawExtractedValue: result.customerCountry },
     customerCap: { wasExtracted: !!result.customerCap, rawExtractedValue: result.customerCap },
     customerCity: { wasExtracted: !!result.customerCity, rawExtractedValue: result.customerCity },
+    customerProvince: { wasExtracted: !!result.customerProvince, rawExtractedValue: result.customerProvince },
     customerAddress: { wasExtracted: !!result.customerAddress, rawExtractedValue: result.customerAddress },
     invoiceNumber: { wasExtracted: !!result.invoiceNumber, rawExtractedValue: result.invoiceNumber },
     invoiceDate: { wasExtracted: !!result.invoiceDate, rawExtractedValue: result.invoiceDate },
@@ -429,11 +503,14 @@ export function parseInvoiceFieldsFromText(text: string): ExtractedPdfData {
 }
 
 /**
- * Extracts raw textual lines from a digital PDF File.
+ * Extracts raw textual lines from a digital PDF File preserving line breaks based on coordinates.
  */
 async function extractDigitalTextFromPdf(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    useSystemFonts: true,
+  });
   const pdfDocument = await loadingTask.promise;
 
   let fullText = "";
@@ -442,10 +519,25 @@ async function extractDigitalTextFromPdf(file: File): Promise<string> {
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const page = await pdfDocument.getPage(pageNum);
     const textContent = await page.getTextContent();
-    const pageLines = textContent.items
-      .map((item: any) => ("str" in item ? item.str : ""))
-      .join(" ");
-    fullText += pageLines + "\n";
+    let pageLines = "";
+    let lastY: number | null = null;
+
+    for (const item of textContent.items) {
+      if (!("str" in item)) continue;
+      const textItem = item as { str: string; transform?: number[]; hasEOL?: boolean };
+      const currentY = textItem.transform ? textItem.transform[5] : null;
+
+      if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 3) {
+        pageLines += "\n";
+      } else if (textItem.hasEOL) {
+        pageLines += "\n";
+      } else if (pageLines.length > 0 && !pageLines.endsWith("\n") && !pageLines.endsWith(" ")) {
+        pageLines += " ";
+      }
+      pageLines += textItem.str;
+      lastY = currentY;
+    }
+    fullText += pageLines + "\n\n";
   }
 
   return fullText;
@@ -470,9 +562,9 @@ async function renderPageToCanvas(page: pdfjsLib.PDFPageProxy, scale: number = 2
 
   await page.render({
     canvasContext: context,
-    viewport: viewport,
     canvas: canvas,
-  } as any).promise;
+    viewport: viewport,
+  }).promise;
 
   return canvas;
 }
@@ -486,32 +578,60 @@ async function runLocalOcr(
   onProgress?: ProgressCallback,
   pageLabel: string = ""
 ): Promise<{ text: string; confidence: number }> {
-  const worker = await createWorker(["ita", "eng"], 1, {
-    workerPath: "/tesseract-worker.min.js",
-    langPath: "/tessdata",
-    logger: (m) => {
-      if (m && onProgress) {
-        const pct = typeof m.progress === "number" ? Math.round(m.progress * 100) : 0;
-        let msg = "Riconoscimento caratteri in corso...";
-        if (m.status === "loading tesseract core") {
-          msg = "Inizializzazione motore OCR...";
-        } else if (m.status === "loading language traineddata") {
-          msg = "Caricamento dizionario lingua OCR...";
-        } else if (m.status === "recognizing text") {
-          msg = pageLabel ? `${pageLabel}: ${pct}%` : `Riconoscimento OCR: ${pct}%`;
-        }
-        onProgress(msg, pct);
-      }
-    },
+  // Safety timeout of 35 seconds for OCR recognition
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Timeout elaborazione OCR (tempo massimo superato).")), 35000);
   });
 
-  const response = await worker.recognize(imageSource);
-  await worker.terminate();
+  const ocrPromise = (async () => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    let worker: any = null;
+    try {
+      worker = await createWorker(["ita", "eng"], 1, {
+        workerPath: origin ? `${origin}/tesseract-worker.min.js` : "/tesseract-worker.min.js",
+        langPath: origin ? `${origin}/tessdata` : "/tessdata",
+        corePath: origin ? `${origin}/tesseract-core` : "/tesseract-core",
+        workerBlobURL: false,
+        gzip: false,
+        cacheMethod: "none",
+        errorHandler: (err: any) => {
+          console.warn("Tesseract worker handled error:", err);
+        },
+        logger: (m: any) => {
+          if (m && onProgress) {
+            const pct = typeof m.progress === "number" ? Math.round(m.progress * 100) : 0;
+            let msg = "Riconoscimento caratteri in corso...";
+            if (m.status === "loading tesseract core") {
+              msg = "Inizializzazione motore OCR locale...";
+            } else if (m.status === "loading language traineddata") {
+              msg = "Caricamento dizionario lingua OCR (ITA/ENG)...";
+            } else if (m.status === "recognizing text") {
+              msg = pageLabel ? `${pageLabel}: ${pct}%` : `Riconoscimento OCR: ${pct}%`;
+            }
+            onProgress(msg, pct);
+          }
+        },
+      });
 
-  return {
-    text: response.data.text || "",
-    confidence: response.data.confidence || 0,
-  };
+      const response = await worker.recognize(imageSource);
+      clearTimeout(timeoutId);
+      return {
+        text: response?.data?.text || "",
+        confidence: response?.data?.confidence || 0,
+      };
+    } finally {
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch (termErr) {
+          console.warn("Worker termination error:", termErr);
+        }
+      }
+    }
+  })();
+
+  return Promise.race([ocrPromise, timeoutPromise]);
 }
 
 /**
@@ -563,39 +683,49 @@ export async function extractInvoiceDataFromFile(
 
     // Digital text was missing or too sparse -> It is a SCANNED PDF!
     onProgress?.("Scansione rilevata: rendering pagina ad alta risoluzione...", 15);
-    const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdfDocument = await loadingTask.promise;
-    const numPages = pdfDocument.numPages;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+      const pdfDocument = await loadingTask.promise;
+      const numPages = pdfDocument.numPages;
 
-    // Render Page 1 (where 95% of invoice headers, VAT, supplier info are located)
-    const page1 = await pdfDocument.getPage(1);
-    const canvas1 = await renderPageToCanvas(page1, 2.0);
+      // Render Page 1 (where 95% of invoice headers, VAT, supplier info are located)
+      const page1 = await pdfDocument.getPage(1);
+      const canvas1 = await renderPageToCanvas(page1, 2.0);
 
-    onProgress?.("Avvio OCR locale su pagina 1...", 25);
-    const ocrResult1 = await runLocalOcr(canvas1, onProgress, "Lettura OCR Pagina 1");
-    let combinedText = ocrResult1.text;
-    let avgConfidence = ocrResult1.confidence;
+      onProgress?.("Avvio OCR locale su pagina 1...", 25);
+      const ocrResult1 = await runLocalOcr(canvas1, onProgress, "Lettura OCR Pagina 1");
+      let combinedText = ocrResult1.text;
+      let avgConfidence = ocrResult1.confidence;
 
-    // If there's a Page 2 and Page 1 was short or had missing total, also scan Page 2
-    if (numPages > 1) {
-      try {
-        onProgress?.("Lettura OCR Pagina 2...", 75);
-        const page2 = await pdfDocument.getPage(2);
-        const canvas2 = await renderPageToCanvas(page2, 2.0);
-        const ocrResult2 = await runLocalOcr(canvas2, onProgress, "Lettura OCR Pagina 2");
-        combinedText += "\n\n--- PAGINA 2 ---\n" + ocrResult2.text;
-        avgConfidence = Math.round((ocrResult1.confidence + ocrResult2.confidence) / 2);
-      } catch (page2Err) {
-        console.warn("Page 2 OCR skipped:", page2Err);
+      // If there's a Page 2 and Page 1 was short or had missing total, also scan Page 2
+      if (numPages > 1) {
+        try {
+          onProgress?.("Lettura OCR Pagina 2...", 75);
+          const page2 = await pdfDocument.getPage(2);
+          const canvas2 = await renderPageToCanvas(page2, 2.0);
+          const ocrResult2 = await runLocalOcr(canvas2, onProgress, "Lettura OCR Pagina 2");
+          combinedText += "\n\n--- PAGINA 2 ---\n" + ocrResult2.text;
+          avgConfidence = Math.round((ocrResult1.confidence + ocrResult2.confidence) / 2);
+        } catch (page2Err) {
+          console.warn("Page 2 OCR skipped:", page2Err);
+        }
       }
-    }
 
-    onProgress?.("Analisi campi fiscali completata", 100);
-    const parsed = parseInvoiceFieldsFromText(combinedText);
-    parsed.extractionMethod = "ocr";
-    parsed.ocrConfidence = avgConfidence;
-    return parsed;
+      onProgress?.("Analisi campi fiscali completata", 100);
+      const parsed = parseInvoiceFieldsFromText(combinedText);
+      parsed.extractionMethod = "ocr";
+      parsed.ocrConfidence = avgConfidence;
+      return parsed;
+    } catch (ocrErr: any) {
+      console.warn("OCR extraction encountered an error:", ocrErr);
+      if (digitalText && digitalText.trim().length > 10) {
+        const parsed = parseInvoiceFieldsFromText(digitalText);
+        parsed.extractionMethod = "digital";
+        return parsed;
+      }
+      throw new Error(ocrErr?.message || "Riconoscimento OCR non riuscito sul documento.");
+    }
   }
 
   // 2. Case B: Direct Image scan (PNG, JPG, etc.)

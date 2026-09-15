@@ -116,6 +116,7 @@ export type ExtractionMetaMap = Partial<Record<
   | "customerCountry"
   | "customerCap"
   | "customerCity"
+  | "customerProvince"
   | "customerAddress"
   | "invoiceNumber"
   | "invoiceDate"
@@ -139,6 +140,7 @@ export interface ExtractedPdfData {
   customerCountry?: string;
   customerCap?: string;
   customerCity?: string;
+  customerProvince?: string;
   customerAddress?: string;
   invoiceNumber?: string;
   invoiceDate?: string;
@@ -156,8 +158,40 @@ export interface FullInvoiceState {
   invoice: InvoiceData;
 }
 
+export const EMPTY_CUSTOMER: CustomerData = {
+  name: "",
+  vat: "",
+  fiscalCode: "",
+  country: "IT",
+  cap: "",
+  city: "",
+  province: "",
+  address: "",
+};
+
+export const EMPTY_SUPPLIER: SupplierData = {
+  name: "",
+  vat: "",
+  country: "",
+  cap: "",
+  city: "",
+  address: "",
+};
+
+export const EMPTY_INVOICE: InvoiceData = {
+  documentType: "TD17",
+  invoiceNumber: "",
+  invoiceDate: "",
+  amount: "",
+  currency: "EUR",
+  description: "",
+  vatRate: "0.00",
+  vatNature: "N6.1",
+  normativeReference: "Inversione contabile",
+};
+
 /**
- * Default anonymous customer (buyer) data for preview and standalone generation.
+ * Default anonymous customer (buyer) data for preview and sample generation.
  * Uses generic placeholders with zero sensitive or personal identifying information.
  */
 export const DEFAULT_CUSTOMER: CustomerData = {

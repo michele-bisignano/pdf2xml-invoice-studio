@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Language, ExtractedPdfData } from "../types";
 import { translations } from "../utils/i18n";
 import { extractInvoiceDataFromFile } from "../utils/pdfExtractor";
@@ -16,6 +16,7 @@ export const PdfDropzone: React.FC<PdfDropzoneProps> = ({ language, onDataExtrac
   const [progressText, setProgressText] = useState("");
   const [progressPercent, setProgressPercent] = useState(0);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,6 +37,7 @@ export const PdfDropzone: React.FC<PdfDropzoneProps> = ({ language, onDataExtrac
 
     setIsLoading(true);
     setSuccessMessage(null);
+    setErrorMessage(null);
     setProgressPercent(10);
     setProgressText(language === "IT" ? "Elaborazione documento..." : "Processing document...");
 
@@ -49,6 +51,8 @@ export const PdfDropzone: React.FC<PdfDropzoneProps> = ({ language, onDataExtrac
       onDataExtracted(extracted, file.name);
     } catch (err: any) {
       console.error("Document extraction error:", err);
+      const errMsg = err?.message || (language === "IT" ? "Errore durante la scansione del file. Puoi compilare i dati manualmente." : "Error scanning file. You can enter invoice details manually.");
+      setErrorMessage(errMsg);
     } finally {
       setIsLoading(false);
       setProgressPercent(0);
@@ -143,6 +147,13 @@ export const PdfDropzone: React.FC<PdfDropzoneProps> = ({ language, onDataExtrac
         <div className="mt-2.5 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center space-x-2 animate-in fade-in duration-200">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>{successMessage}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="mt-2.5 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 font-semibold flex items-center space-x-2 animate-in fade-in duration-200">
+          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+          <span>{errorMessage}</span>
         </div>
       )}
     </div>
