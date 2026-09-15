@@ -80,6 +80,7 @@ MIME_MAP = {
     ".ico": "image/x-icon",
     ".svg": "image/svg+xml",
     ".traineddata": "application/octet-stream",
+    ".gz": "application/gzip",
     ".txt": "text/plain; charset=utf-8",
 }
 
