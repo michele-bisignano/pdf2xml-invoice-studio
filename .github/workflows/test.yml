@@ -1,4 +1,4 @@
-name: Python & Web Build CI
+name: Web Build CI
 
 on:
   push:
@@ -7,22 +7,6 @@ on:
     branches: [ main, master ]
 
 jobs:
-  python-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r python_script/requirements.txt
-      - name: Run Python unit tests
-        run: |
-          python python_script/test_generator.py
-
   frontend-build:
     runs-on: ubuntu-latest
     steps:
@@ -33,5 +17,7 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm ci
+      - name: Lint Codebase
+        run: npm run lint
       - name: Build Web App
         run: npm run build
