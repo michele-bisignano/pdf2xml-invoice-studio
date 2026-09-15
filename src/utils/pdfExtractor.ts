@@ -491,9 +491,12 @@ async function runLocalOcr(
   onProgress?: ProgressCallback,
   pageLabel: string = ""
 ): Promise<{ text: string; confidence: number }> {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const worker = await createWorker(["ita", "eng"], 1, {
-    workerPath: "/tesseract-worker.min.js",
-    langPath: "/tessdata",
+    workerPath: `${origin}/tesseract-worker.min.js`,
+    langPath: `${origin}/tessdata`,
+    corePath: `${origin}/tesseract-core`,
+    gzip: false,
     logger: (m) => {
       if (m && onProgress) {
         const pct = typeof m.progress === "number" ? Math.round(m.progress * 100) : 0;
@@ -501,7 +504,9 @@ async function runLocalOcr(
         if (m.status === "loading tesseract core") {
           msg = "Inizializzazione motore OCR...";
         } else if (m.status === "loading language traineddata") {
-          msg = "Caricamento dizionario lingua OCR...";
+          msg = "Caricamento dizionario lingua OCR (ita/eng)...";
+        } else if (m.status === "loaded language traineddata" || m.status === "initializing api") {
+          msg = "Inizializzazione OCR...";
         } else if (m.status === "recognizing text") {
           msg = pageLabel ? `${pageLabel}: ${pct}%` : `Riconoscimento OCR: ${pct}%`;
         }
