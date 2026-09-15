@@ -156,8 +156,11 @@ class HeartbeatHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def end_headers(self):
-        # Enable CORS and basic security headers for local app
+        # Enable CORS and basic caching headers for local desktop app
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
         super().end_headers()
 
     def log_message(self, format, *args):
