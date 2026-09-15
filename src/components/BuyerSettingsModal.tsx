@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, Building2, Save, RotateCcw } from "lucide-react";
 import { CustomerData, Language, DEFAULT_CUSTOMER } from "../types";
 import { translations } from "../utils/i18n";
@@ -20,12 +20,6 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
 }) => {
   const t = translations[language];
   const [formData, setFormData] = useState<CustomerData>({ ...customer });
-
-  useEffect(() => {
-    if (isOpen) {
-      setFormData({ ...customer });
-    }
-  }, [isOpen, customer]);
 
   if (!isOpen) return null;
 
@@ -74,7 +68,7 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
         <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              {t.buyerNameLabel}
+              {t.customerNameLabel}
             </label>
             <input
               type="text"
@@ -111,22 +105,36 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              {t.buyerAddressLabel}
-            </label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => handleChange("address", e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500"
-            />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {t.customerAddressLabel}
+              </label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => handleChange("address", e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {t.customerCountryLabel}
+              </label>
+              <input
+                type="text"
+                maxLength={2}
+                value={formData.country || "IT"}
+                onChange={(e) => handleChange("country", e.target.value.toUpperCase())}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono uppercase focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {t.buyerCapLabel}
+                {t.customerCapLabel}
               </label>
               <input
                 type="text"
@@ -137,7 +145,7 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {t.buyerCityLabel}
+                {t.customerCityLabel}
               </label>
               <input
                 type="text"
@@ -148,12 +156,12 @@ export const BuyerSettingsModal: React.FC<BuyerSettingsModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {t.buyerProvinceLabel}
+                {t.customerProvinceLabel}
               </label>
               <input
                 type="text"
                 maxLength={2}
-                value={formData.province}
+                value={formData.province || ""}
                 onChange={(e) => handleChange("province", e.target.value.toUpperCase())}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 uppercase focus:ring-2 focus:ring-emerald-500"
               />
