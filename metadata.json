@@ -1,0 +1,6 @@
+{
+  "name": "SelfInvoice XML Studio",
+  "description": "Electronic self-invoice & reverse charge XML generator (TD16, TD17, TD18) from PDF documents with automatic document type detection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
