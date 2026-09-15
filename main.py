@@ -83,6 +83,26 @@ MIME_MAP = {
     ".txt": "text/plain; charset=utf-8",
 }
 
+for ext, mime in MIME_MAP.items():
+    mimetypes.add_type(mime, ext)
+
+def is_valid_compiled_dist(path):
+    """Check if the directory contains a compiled production index.html (not raw Vite source)."""
+    if not path or not os.path.exists(path):
+        return False
+    index_file = os.path.join(path, "index.html")
+    if not os.path.isfile(index_file):
+        return False
+    try:
+        with open(index_file, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+            # If it references /src/main.tsx, it is uncompiled source, not a production build
+            if "/src/main.tsx" in content:
+                return False
+            return True
+    except Exception:
+        return False
+
 def get_static_directory():
     """Resolve the location of the compiled frontend dist directory."""
     candidates = []
@@ -96,22 +116,22 @@ def get_static_directory():
     # 2. Directory containing this script / executable
     script_dir = os.path.dirname(os.path.abspath(__file__))
     candidates.append(os.path.join(script_dir, "dist"))
-    candidates.append(script_dir)
 
     # 3. Current working directory
     candidates.append(os.path.join(os.getcwd(), "dist"))
-    candidates.append(os.getcwd())
 
     for path in candidates:
-        if os.path.exists(os.path.join(path, "index.html")):
-            log(f"Found static files in: {path}")
+        if is_valid_compiled_dist(path):
+            log(f"Found compiled production static files in: {path}")
             return path
 
-    log(f"[WARN] index.html not found in candidate paths. Falling back to: {candidates[0]}")
-    return candidates[0]
+    # Fallback to script_dir/dist
+    fallback = os.path.join(script_dir, "dist")
+    log(f"[WARN] Valid dist/index.html not found yet. Defaulting to: {fallback}")
+    return fallback
 
 
-STATIC_DIR = get_static_directory()
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
 
 
 class HeartbeatHandler(SimpleHTTPRequestHandler):
@@ -208,23 +228,26 @@ def timedelta_watchdog(server, grace_period=45.0, timeout=20.0):
 
 def ensure_dist_exists():
     """Ensure the static frontend is compiled before launching when running in dev."""
-    dist_index = os.path.join(STATIC_DIR, "index.html")
-    if not os.path.exists(dist_index) and not getattr(sys, 'frozen', False):
-        log("Folder 'dist/' not found. Running 'npm run build' automatically...")
+    global STATIC_DIR
+    target_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+    if not is_valid_compiled_dist(target_dist) and not getattr(sys, 'frozen', False):
+        log("Compiled frontend 'dist/' not found or outdated. Running 'npm run build'...")
         try:
             subprocess.run(["npm", "run", "build"], cwd=os.path.dirname(os.path.abspath(__file__)), check=True, shell=True)
             log("Build finished successfully!")
         except Exception as e:
             log(f"[ERROR] Could not build frontend: {e}")
+    STATIC_DIR = get_static_directory()
 
 
 def main():
-    global server_instance, is_shutting_down
+    global server_instance, is_shutting_down, STATIC_DIR
     log("=" * 60)
     log(" SelfInvoice XML Studio - Desktop Launcher")
     log("=" * 60)
 
     ensure_dist_exists()
+    STATIC_DIR = get_static_directory()
 
     port = find_free_port(3000)
     server_address = ("127.0.0.1", port)
