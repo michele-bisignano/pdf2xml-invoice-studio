@@ -88,7 +88,7 @@ for ext, mime in MIME_MAP.items():
     mimetypes.add_type(mime, ext)
 
 def is_valid_compiled_dist(path):
-    """Check if the directory contains a compiled production index.html (not raw Vite source)."""
+    """Check if the directory contains a compiled production index.html (not raw Vite source) and required assets."""
     if not path or not os.path.exists(path):
         return False
     index_file = os.path.join(path, "index.html")
@@ -100,7 +100,13 @@ def is_valid_compiled_dist(path):
             # If it references /src/main.tsx, it is uncompiled source, not a production build
             if "/src/main.tsx" in content:
                 return False
-            return True
+            
+        # Verify that OCR assets exist
+        tess_gz = os.path.join(path, "tessdata", "ita.traineddata.gz")
+        if not os.path.exists(tess_gz):
+            return False
+            
+        return True
     except Exception:
         return False
 
@@ -230,14 +236,31 @@ def timedelta_watchdog(server, grace_period=45.0, timeout=20.0):
 def ensure_dist_exists():
     """Ensure the static frontend is compiled before launching when running in dev."""
     global STATIC_DIR
-    target_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    target_dist = os.path.join(script_dir, "dist")
+    public_dir = os.path.join(script_dir, "public")
+
     if not is_valid_compiled_dist(target_dist) and not getattr(sys, 'frozen', False):
         log("Compiled frontend 'dist/' not found or outdated. Running 'npm run build'...")
         try:
-            subprocess.run(["npm", "run", "build"], cwd=os.path.dirname(os.path.abspath(__file__)), check=True, shell=True)
+            subprocess.run(["npm", "run", "build"], cwd=script_dir, check=True, shell=True)
             log("Build finished successfully!")
         except Exception as e:
             log(f"[ERROR] Could not build frontend: {e}")
+
+    # Ensure static public assets (tessdata, tesseract-core, workers) are synced into dist
+    if os.path.exists(public_dir) and os.path.exists(target_dist):
+        try:
+            for item in os.listdir(public_dir):
+                s = os.path.join(public_dir, item)
+                d = os.path.join(target_dist, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, dirs_exist_ok=True)
+                elif not os.path.exists(d):
+                    shutil.copy2(s, d)
+        except Exception as e:
+            log(f"[WARN] Could not sync public assets to dist: {e}")
+
     STATIC_DIR = get_static_directory()
 
 
