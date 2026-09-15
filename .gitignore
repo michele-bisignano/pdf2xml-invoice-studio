@@ -7,7 +7,14 @@ node_modules/
 dist/
 dist-ssr/
 build/
+dist_win/
 *.local
+
+# PyInstaller & Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
 
 # Testing & Coverage
 coverage/
